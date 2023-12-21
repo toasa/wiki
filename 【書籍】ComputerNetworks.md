@@ -4,7 +4,7 @@ https://www.amazon.co.jp/Computer-Networks-Global-Andrew-Tanenbaum/dp/1292374063
 
 モデルは各レイヤから成る。各レイヤの実装としてプロトコルがある。
 例えば、TCP/IP reference モデルは Application, Transport, Internet, Link レイヤから成る。
-Transport レイヤのプロトコル例として TCP, UDP がある。
+例えば、Transport レイヤのプロトコルとして TCP, UDP がある。
 
 ### 1.6.3
 
