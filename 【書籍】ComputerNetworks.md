@@ -44,3 +44,10 @@ https://www.saitolab.org/fp_site/
 
 各章の Overview。
 3章のBluetooth, 7章の email のプロトコル、CDN サービスが興味ある
+
+## 2.1.5
+
+光ファイバの物理的特性からくる転送レートの限界は50Tbps。
+現在の光ファイバは 100Gbps ほどで、そのボトルネックは電気と光の変換のところにある。
+CPUのクロック周波数が物理的限界に近づいていることとは対称的。
+[APN](https://www.rd.ntt/iown/0002.html) だな、将来は。
