@@ -1,3 +1,4 @@
+https://www.amazon.co.jp/Fluent-Python-Concise-Effective-Programming/dp/1492056359
 
 # 1. Data Structure
 
