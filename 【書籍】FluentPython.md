@@ -7,11 +7,17 @@ https://www.amazon.co.jp/Fluent-Python-Concise-Effective-Programming/dp/14920563
 `_` ２つで前後を囲ったメソッドを Special method という
 （Dunder method とも。由来は Double underscore before and after から）。
 
+### A Pythonic Card Deck
+
 トランプのデッキを表す自作クラス `FrenchDeck` に、`__len__` と `__getitem__` の Special method を実装するサンプル。
 この実装により、Python のビルトイン機能 (e.g. Iteration, Slicing) が使えるようになる。
 Python ユーザは、少ないコード記述量で多くの機能が利用できる。
 レバレッジが効いて、便利だねという売り文句。
 jQuery の Write less, Do more に似た思想。
+
+### How Special Methods Are Used
+
+Special Method の重要な用途４例：
 
 - Emulating numeric types<br>
     例として、自作 Vector クラスに `__add__`, `__mul__` Special method を実装することで、`+`, `*` が使えるようになるよ、というはなし。Rust のトレイト味がある。
@@ -22,10 +28,15 @@ jQuery の Write less, Do more に似た思想。
 - Implementing collections<br>
     Collection なオブジェクトの継承関係。
 
-Table1-2. Operator に対応する Special method のテーブル。
-v1.5 から `@`が導入され行列の積が書けるだと！ (Method は`__matmul__`) 。
+### Overview of Special Methods
 
-### "Why len is not a method?"
+Python には 80 以上の Special method がある。
+算術、ビット、比較演算などの Operator に対応する method は Table1-2 にまとまっている。
+Operator 以外の method は Table1-1 にまとまっている。
+
+テーブルを眺める。v1.5 から `@`が導入され行列の積が書ける！ (Method は`__matmul__`) 。
+
+### Why len is not a method?
 
 `len()` の引数の型により、Python インタプリタの挙動が異なる：
 
