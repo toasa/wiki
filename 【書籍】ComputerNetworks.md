@@ -2,6 +2,13 @@ https://www.amazon.co.jp/Computer-Networks-Global-Andrew-Tanenbaum/dp/1292374063
 
 # 1. Introduction
 
+## 1.4 ネットワークの例
+
+### 1.4.3 無線ネットワーク (WiFi)
+
+WiFi (正式には 802.11) は ISM (Industrial, Scientific, and Medical) 帯（例えば 2.4 GHz, 5 GHz。これらの周波数帯は免許不要）で動作する。
+
+
 ## 1.6 Reference Models
 
 モデルは各レイヤから成る。各レイヤの実装としてプロトコルがある。
@@ -233,8 +240,18 @@ MAC副層はデータ・リンク層の最下層に位置する。
 教科書では「あまりにひどいため、IEEEが取り下げた規格」と解説されている。
 どのあたりがまずかったんだろ？
 
+## 4.3 イーサネット
+
 ## 4.4 無線LAN
 
 ### 4.4.1 802.11 のアーキテクチャとプロトコル・スタック
 
 802.11a の仕様は1999年に決まった。今もよく使っているが、20年以上前の仕様だったとは。
+
+## 4.5 BLUETOOTH
+
+標準化団体の名前 Special Interest Group (SIG) って名前が面白いｗ。
+
+### 4.5.4 Bluetooth の無線通信層
+
+Bluetooth は 2.4 GHz の ISM 帯を使う。
