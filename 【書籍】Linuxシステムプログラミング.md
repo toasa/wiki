@@ -94,3 +94,63 @@ CPU は、それぞれにキャッシュを持つため、プロセスの実行�
 
 プロセスがファイルをオープンしている間は、`unlink()` を読んでも、ファイルは削除されない。
 ファイルがクローズされ、オープンしているプロセスが存在しなくなった時点で、カーネルはファイルを削除する。
+
+## 7.5 デバイスノード
+
+### 7.5.1
+
+* `/dev/null` への読み取りは EOF が返される。
+* `/dev/zero` への読み取りは null 文字が返される。
+* `/dev/full` への読み取りは null 文字が返される。書き込みはエラー (`ENOSPC`) となる
+
+# 8章 メモリ管理
+
+## 8.4 無名メモリマッピング
+
+* 内部フラグメンテーション：要求されたサイズよりも大きなメモリ領域を返す問題
+* 外部フラグメンテーション：要求されたサイズ分の未使用メモリがあるにもかかわらず、複数のメモリ領域に分断されている状態
+
+### 8.4.1 無名メモリマッピングの作成
+
+Linux では `mmap()` に `MAP_ANONUMOUS` フラグをつけて、作成する。
+
+`malloc()` は、閾値を超えたメモリサイズを割り当てる場合は、ヒープから割り当てず、無名メモリマッピングを使う。[man malloc](https://man7.org/linux/man-pages/man3/malloc.3.html) の NOTES：
+
+>  Normally, malloc() allocates memory from the heap, and adjusts the size of the heap as required, using sbrk(2). When allocating blocks of memory larger than MMAP_THRESHOLD bytes, the glibc malloc() implementation allocates the memory as a private anonymous mapping using mmap(2).  MMAP_THRESHOLD is 128 kB by default, but is adjustable using mallopt(3).
+
+## 8.7 スタック上のメモリ割り当て
+
+* `alloca()` でスタック上に動的にメモリを割り当てることができる。割り当てたメモリ領域は `free()` してはいけない。
+* C99 で可変サイズ配列 (variable-length array, VLA) が導入された。以下みたいなやつ：
+  * ```c
+    void foo(int size) {
+      int arr[size];
+    }
+    ```
+
+## 8.9 メモリ操作
+
+* バイト設定：`memset()`
+* バイト比較：`memcmp()`
+* バイト移動：`memmove()`。src と dst に重なりがあってもよい。
+* バイト検索：`memchr()`
+* バイトの「意味不明化」：`memfrob()`
+
+
+２つの構造体を `memcmp()` で比較することはできない。
+構造体の内部にはパディングが含まれており、パディング部分は未初期化の不定値であるため。
+
+## 8.10 メモリのロック
+
+アプリケーションは、メモリ領域をディスクにスワップアウトさせず、物理メモリに留まらせることができる。
+このような動作をメモリのロックという。
+メモリをロックしたい場面：
+
+* 時間制約に厳しい場合。ページフォルトの処理時間を許容できないような、時間に厳しいアプリの場合。
+* セキュリティ。例えばユーザの秘密鍵が暗号化されずに、ディスクに書き出されてしまうと、セキュリティ上の問題がある。
+
+ロックする方法：
+
+* `mlock()`：アドレス空間の一部をロックする。
+* `mlockall()`：アドレス空間全体をロックする。
+
