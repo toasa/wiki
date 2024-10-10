@@ -26,3 +26,34 @@ assert!(((a - b) as f64).abs() <= f64::EPSILON);
 繰り返し乗算を行い発散するかをチェックする。
 発散の速度も見ていて、[速度によって点の濃淡を書き分け](https://github.com/rust-in-action/code/blob/1st-edition/ch2/ch2-mandelbrot/src/main.rs#L55-L63)ている。
 
+# Ch.5 Data in depth
+
+## 5.4 Floating-point numbers
+
+単項マイナスはメソッド呼び出しより優先順位が低い。そのため `-1.0_f32.powf(0.0)` は $-(1^0)$ と解釈されてしまう。
+
+# Ch.8 Networking
+
+## 8.5 Ergonomic error handling for libraries
+
+以下２つのコードは戻り値の型が違うのに、どちらもコンパイルが通る：
+
+```rust
+fn main() -> std::io::Result<()> {
+    let _f = std::fs::File::open("foo.txt")?;
+    Ok(())
+}
+```
+
+```rust
+fn main() -> Result<(), std::io::Error> {
+    let _f = std::fs::File::open("foo.txt")?;
+    Ok(())
+}
+```
+
+理由は、std::io に Result 型が型エイリアスとして[定義されている](https://doc.rust-lang.org/std/io/type.Result.html)ため：
+
+```
+pub type Result<T> = std::result::Result<T, std::io::Error>;
+```
