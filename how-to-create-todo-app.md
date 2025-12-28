@@ -14,7 +14,14 @@
 Node.js の実行環境を Docker コンテナ内に作成する。
 Docker イメージは `node:24-alpine` を使用する。
 
-`compose.yaml` を作成：
+まず、Ubuntu 側で作業用ディレクトリを作る：
+
+```
+$ mkdir todo-app
+$ cd todo-app
+```
+
+次に、以下の `compose.yaml` を作成する：
 
 ```
 services:
