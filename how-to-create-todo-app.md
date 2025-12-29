@@ -458,6 +458,3 @@ IDが 1 のタスクを削除する：
 ```
 $ curl -X DELETE http://localhost:3000/todos/1
 ```
-
-
-
