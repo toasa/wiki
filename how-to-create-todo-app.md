@@ -300,3 +300,164 @@ CREATE TABLE todos (
 ```
 
 `\dt` で `todos` テーブルが表示されれば作成完了。
+
+## Step3: ToDo APIの実装 (CRUD)
+
+`src/index.ts` を以下のように修正する：
+
+```ts
+import express, { Request, Response } from 'express';
+import { Pool } from 'pg';
+
+const app = express();
+const port = 3000;
+
+// DB接続設定
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  port: 5432,
+});
+
+// JSONボディを受け取るためのミドルウェア
+app.use(express.json());
+
+// TypeScript用の型定義 (Cのstructに相当)
+interface Todo {
+  id: number;
+  title: string;
+  is_completed: boolean;
+  created_at: Date;
+}
+
+// 1. ToDo一覧の取得 (READ)
+app.get('/todos', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query<Todo>('SELECT * FROM todos ORDER BY id ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 2. ToDoの作成 (CREATE)
+app.post('/todos', async (req: Request, res: Response) => {
+  try {
+    const { title } = req.body; // リクエストボディから title を取り出す
+    if (!title) {
+       res.status(400).json({ error: 'Title is required' });
+       return;
+    }
+    
+    // $1 はパラメータプレースホルダ。安全に値を埋め込みます。
+    // RETURNING * は、INSERTした結果（自動生成されたid含む）を返すPostgreSQLの機能
+    const result = await pool.query<Todo>(
+      'INSERT INTO todos (title) VALUES ($1) RETURNING *',
+      [title]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 3. ToDoの更新 (UPDATE) - 完了状態の切り替えなどに使用
+//   :id はURLパラメータ（例: /todos/1）
+app.put('/todos/:id', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { title, is_completed } = req.body;
+
+    const result = await pool.query<Todo>(
+      'UPDATE todos SET title = $1, is_completed = $2 WHERE id = $3 RETURNING *',
+      [title, is_completed, id]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Todo not found' });
+      return;
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 4. ToDoの削除 (DELETE)
+app.delete('/todos/:id', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query('DELETE FROM todos WHERE id = $1', [id]);
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Todo not found' });
+      return;
+    }
+    res.status(204).send(); // 204 No Content (成功したが返す中身はない)
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server is running at http://localhost:${port}`);
+});
+```
+
+### 動作確認
+
+コードを保存すると `nodemon` がサーバーを再起動する。
+別のターミナルから `curl` コマンドで API を叩く。
+
+#### ToDo を作成 (Post)：
+
+```
+# -X POST: メソッド指定
+# -H: ヘッダ指定 (JSONを送ると宣言)
+# -d: データ本体
+$ curl -X POST http://localhost:3000/todos \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Learn TypeScript"}'
+
+# もう一つ追加
+$ curl -X POST http://localhost:3000/todos \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Build a Web App"}'
+```
+
+成功すると {"id":1, "title":"Learn TypeScript", ...} のようなJSONが返る。
+
+#### 一覧を取得 (GET)：
+
+```
+$ curl http://localhost:3000/todos
+```
+
+配列 [ ... ] に入ったデータが返ってくればOK。
+
+#### ToDo を更新 (PUT)
+
+IDが 1 のタスクを「完了(true)」にし、タイトルも修正する：
+
+```
+$ curl -X PUT http://localhost:3000/todos/1 \
+       -H "Content-Type: application/json" \
+       -d '{"title": "Learn TypeScript & Node.js", "is_completed": true}'
+```
+
+#### ToDo を削除 (DELETE)
+
+IDが 1 のタスクを削除する：
+
+```
+$ curl -X DELETE http://localhost:3000/todos/1
+```
+
+
+
