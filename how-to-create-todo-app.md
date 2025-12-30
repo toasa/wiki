@@ -541,7 +541,6 @@ app.use(express.json());
 // --- 型定義 ---
 
 // ExpressのRequest型を拡張して、user情報を運べるようにする
-// (Cでいう構造体の継承やメンバ追加のようなイメージ)
 declare global {
   namespace Express {
     interface Request {
