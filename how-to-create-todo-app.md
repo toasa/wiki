@@ -1,3 +1,7 @@
+https://gemini.google.com/app/7fc2d4af025c5569
+
+---
+
 ## 概要
 
 以下の環境で ユーザ認証付きの ToDo ウェブアプリを作る
@@ -32,7 +36,7 @@ Docker イメージは `node:24-alpine` を使用する。
 
 以下の `compose.yaml` を作成する：
 
-```
+```yaml
 services:
   app:
     image: node:24-alpine
@@ -80,7 +84,7 @@ npx tsc --init
 
 `tsconfig.json` を以下のように修正：
 
-```
+```json
 {
   "compilerOptions": {
     "target": "es2020",
@@ -757,7 +761,7 @@ $ mkdir public
 
 以下の内容の `public/index.html` 作成：
 
-```
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
