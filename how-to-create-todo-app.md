@@ -745,3 +745,191 @@ $ curl http://localhost:3000/todos
 ```
 
 `{"error":"Access token required"}` となれば成功。
+
+## Step 5: Nginx との連携 (デプロイ)
+
+### フロントエンド（静的ファイル）の作成
+
+プロジェクトのルートディレクトリに `public` フォルダを作成：
+
+```
+$ mkdir public
+```
+
+以下の内容の `public/index.html` 作成：
+
+```
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>ToDo App</title>
+</head>
+<body>
+    <h1>My ToDo App</h1>
+    
+    <div id="login-section">
+        <h2>Login</h2>
+        <input type="text" id="username" placeholder="Username" value="dev_user">
+        <input type="password" id="password" placeholder="Password" value="secure_password">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div id="todo-section" style="display:none;">
+        <h2>My Tasks</h2>
+        <ul id="todo-list"></ul>
+        <input type="text" id="new-todo" placeholder="New Task">
+        <button onclick="addTodo()">Add</button>
+    </div>
+
+    <script>
+        let token = '';
+
+        // ログイン処理
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Nginx経由なので /api/login に投げる
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+            if (data.token) {
+                token = data.token;
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('todo-section').style.display = 'block';
+                fetchTodos();
+            } else {
+                alert('Login Failed: ' + JSON.stringify(data));
+            }
+        }
+
+        // 一覧取得
+        async function fetchTodos() {
+            const res = await fetch('/api/todos', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const todos = await res.json();
+            const list = document.getElementById('todo-list');
+            list.innerHTML = '';
+            todos.forEach(todo => {
+                const li = document.createElement('li');
+                li.textContent = `${todo.id}: ${todo.title} (${todo.is_completed ? 'Done' : 'Doing'})`;
+                list.appendChild(li);
+            });
+        }
+
+        // ToDo追加
+        async function addTodo() {
+            const title = document.getElementById('new-todo').value;
+            await fetch('/api/todos', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ title })
+            });
+            document.getElementById('new-todo').value = '';
+            fetchTodos();
+        }
+    </script>
+</body>
+</html>
+```
+
+### Nginx 設定ファイル作成
+
+プロジェクトルートに `nginx` フォルダを作成し、`default.conf` を置く：
+
+```
+$ mkdir nginx
+```
+
+`nginx/default.conf`
+
+```
+server {
+    listen 80;
+    server_name localhost;
+
+    # 1. 静的ファイルの設定
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+    }
+
+    # 2. APIへのリバースプロキシ設定
+    # /api/ へのアクセスを Node.js コンテナへ転送する
+    location /api/ {
+        # proxy_pass の末尾に / を付けると、転送時に /api 部分を削除してくれる
+        # 例: ブラウザ /api/todos -> Nginx -> Node.js /todos
+        proxy_pass http://app:3000/;
+        
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### compose.yaml の最終更新
+
+Nginx コンテナを追加し、Node.js アプリを外部から隠蔽する：
+
+```yaml
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"  # ホストの80番をNginxの80番へ
+    volumes:
+      - ./public:/usr/share/nginx/html  # フロントエンドのファイルをマウント
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf # 設定ファイルをマウント
+    depends_on:
+      - app
+
+  app:
+    image: node:24-alpine
+    working_dir: /app
+    # ports:        <-- 削除！ アプリの3000番は外部に公開しない
+    #   - "3000:3000"
+    volumes:
+      - ./:/app
+    environment:
+      - DB_HOST=db
+      - DB_USER=myuser
+      - DB_PASS=mypassword
+      - DB_NAME=todo_db
+    command: sh -c "npm install && npm run dev"
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+      - POSTGRES_DB=todo_db
+    # ports:        <-- DBも本番では隠すのが一般的だが、開発中は確認用に開けておいてもOK
+    #   - "5432:5432"
+
+volumes:
+  postgres_data:
+  ```
+
+### 起動と動作確認
+
+構成が変わったので、一度コンテナを作り直す：
+
+```
+$ sudo docker compose down
+$ sudo docker compose up --build
+```
+
+ブラウザで `http://localost/` にアクセスして、タスクを追加。
