@@ -283,7 +283,7 @@ $ sudo docker compose exec db psql -U myuser -d todo_db
 
 プロンプトが `todo_db=#` に変わったら、以下のSQLを入力する：
 
-```
+```sql
 -- テーブル作成
 CREATE TABLE todos (
     id SERIAL PRIMARY KEY,      -- 自動連番ID
@@ -458,3 +458,290 @@ IDが 1 のタスクを削除する：
 ```
 $ curl -X DELETE http://localhost:3000/todos/1
 ```
+
+## Step4: ユーザ認証の追加
+
+1. Usersテーブル を作成し、ToDoテーブルと紐付ける（外部キー制約）。
+2. パスワードをハッシュ化して保存する。
+3. ログイン時に JWT を発行する。
+4. APIアクセス時に JWT を検証する ミドルウェア を実装する。
+5. 「自分のToDo」だけが見えるようにSQLを修正する。
+
+### データベースの変更
+
+既存のデータがあると生合成が取れなくなるため、学習用の今回は一度データを空にする。
+DBコンテナに入る：
+
+```
+$ docker compose exec db psql -U myuser -d todo_db
+```
+
+以下のSQLを実行する：
+
+```sql
+-- 既存データをクリア（依存関係があるため作り直す）
+DROP TABLE IF EXISTS todos;
+DROP TABLE IF EXISTS users;
+
+-- 1. ユーザーテーブル作成
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL
+);
+
+-- 2. ToDoテーブル再作成（user_idカラムを追加）
+CREATE TABLE todos (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id), -- 外部キー
+    title TEXT NOT NULL,
+    is_completed BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+\q
+```
+
+### ライブラリのインストール
+
+認証に必要な暗号化ライブラリを追加する：
+
+```
+# bcrypt: パスワードハッシュ化
+# jsonwebtoken: トークン生成・検証
+docker compose exec app npm install bcrypt jsonwebtoken
+docker compose exec app npm install -D @types/bcrypt @types/jsonwebtoken
+```
+
+### ソースコードの実装
+
+`src/index.ts` を以下のように修正する：
+
+```ts
+import express, { Request, Response, NextFunction } from 'express';
+import { Pool } from 'pg';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+
+const app = express();
+const port = 3000;
+const JWT_SECRET = 'my-secret-key-change-this-in-production'; // 本来は環境変数から読むべき
+
+// DB接続設定
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  port: 5432,
+});
+
+app.use(express.json());
+
+// --- 型定義 ---
+
+// ExpressのRequest型を拡張して、user情報を運べるようにする
+// (Cでいう構造体の継承やメンバ追加のようなイメージ)
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: number; username: string };
+    }
+  }
+}
+
+// --- 認証ミドルウェア ---
+
+// APIを守るための「関所」。トークンがないリクエストはここで弾く。
+const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  // Header形式: "Bearer <token>"
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    
+    // トークンが正しければ、解読したユーザー情報をreqオブジェクトに付加して次へ
+    req.user = user as { id: number; username: string };
+    next();
+  });
+};
+
+// --- 認証系 API (公開) ---
+
+// ユーザー登録
+app.post('/register', async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    // パスワードをハッシュ化 (ソルト処理含む)
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username',
+      [username, hashedPassword]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err: any) {
+    // 一意制約違反(23505)のチェック
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Username already exists' });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ログイン
+app.post('/login', async (req: Request, res: Response) => {
+  try {
+    const { username, password } = req.body;
+    
+    // ユーザー検索
+    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const user = result.rows[0];
+
+    // パスワード照合
+    const validPassword = await bcrypt.compare(password, user.password_hash);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // JWT発行 (署名)
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// --- ToDo API (要認証) ---
+
+// authenticateToken を通ったリクエストだけが以下の関数を実行できる
+
+// 1. 一覧取得 (自分のToDoのみ)
+app.get('/todos', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    // req.user.id にはミドルウェアがセットしたIDが入っている
+    const userId = req.user?.id;
+    const result = await pool.query('SELECT * FROM todos WHERE user_id = $1 ORDER BY id ASC', [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 2. 作成 (自分のIDを紐付ける)
+app.post('/todos', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { title } = req.body;
+    const userId = req.user?.id;
+
+    const result = await pool.query(
+      'INSERT INTO todos (title, user_id) VALUES ($1, $2) RETURNING *',
+      [title, userId]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 3. 更新 (自分のToDoのみ)
+app.put('/todos/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { title, is_completed } = req.body;
+    const userId = req.user?.id;
+
+    const result = await pool.query(
+      'UPDATE todos SET title = $1, is_completed = $2 WHERE id = $3 AND user_id = $4 RETURNING *',
+      [title, is_completed, id, userId]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Todo not found or not authorized' });
+      return;
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 4. 削除 (自分のToDoのみ)
+app.delete('/todos/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const userId = req.user?.id;
+
+    const result = await pool.query('DELETE FROM todos WHERE id = $1 AND user_id = $2', [id, userId]);
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Todo not found or not authorized' });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server is running at http://localhost:${port}`);
+});
+```
+
+### 動作確認
+
+`nodemon` による再起動を確認後、`curl` でテストする。
+
+まず、ユーザー登録を行う：
+
+```
+$ curl -X POST http://localhost:3000/register \
+       -H "Content-Type: application/json" \
+       -d '{"username": "dev_user", "password": "secure_password"}'
+```
+
+次に、ログインしてトークンの取得を行う：
+
+```
+$ curl -X POST http://localhost:3000/login \
+       -H "Content-Type: application/json" \
+       -d '{"username": "dev_user", "password": "secure_password"}'
+```
+
+出力例: `{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6..."}` このトークン文字列（`eyJ...`の部分）をコピーする。
+
+次に、トークンを使って ToDo を作成する。コピーしたトークンを `<TOKEN>` の部分に貼り付ける：
+
+```
+$ curl -X POST http://localhost:3000/todos \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer <TOKEN>" \
+       -d '{"title": "Secret Task"}'
+```
+
+最後に、トークンなしでアクセスして拒否されることを確認する：
+
+```
+$ curl http://localhost:3000/todos
+```
+
+`{"error":"Access token required"}` となれば成功。
