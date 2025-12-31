@@ -13,6 +13,13 @@ https://gemini.google.com/app/7fc2d4af025c5569
 
 ステップバイステップでインクリメンタルに開発を進める。
 
+全体像となるアーキテクチャは以下：
+
+- Client (Browser): HTML/JS (UI)
+- Reverse Proxy (Nginx): クライアントからのリクエストを受け取り、バックエンドへ流す
+- App Server (Node.js + Express): TypeScriptで記述。ビジネスロジックを処理。
+- Database (PostgreSQL): データの永続化。
+
 ## Step 1: 環境構築
 
 1. Docker で Node.js 環境を構築
