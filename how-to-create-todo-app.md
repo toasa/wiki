@@ -1,4 +1,6 @@
-https://gemini.google.com/app/7fc2d4af025c5569
+- きっかけ： https://mond.how/ja/topics/0ipq5bj0eiax257
+
+- Geminiの回答：https://gemini.google.com/app/7fc2d4af025c5569
 
 ---
 
